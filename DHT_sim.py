@@ -8,6 +8,8 @@ import textwrap
 import hashlib
 from pathlib import Path
 import numpy as np
+import shutil
+import os
 
 
 def hash_func(name):
@@ -36,11 +38,6 @@ class node:
         # each node will have a "first" property, set to true only if it meets certain conditions
         # and will be updated as the node joins the network
         self.first = True
-
-        # upon creation, each node will have a directory, if it doesn't already exist
-        # this is where the data will be actually stored,
-        # the memory list will store the paths 
-        Path(name).mkdir(parents=True, exist_ok=True)
 
     def join_network(self, node):
         """
@@ -90,6 +87,12 @@ class node:
                 node.neighbours[0].neighbours[1] = self
                 node.neighbours[0] = self
                 node.first = False    
+        
+        # upon joining a network, each node will have a directory, if it doesn't already exist
+        # this is where the data will be actually stored,
+        # the memory list will store the paths 
+        Path(self.name).mkdir(parents=True, exist_ok=True)
+
         return None
 
     def leave_network(self):
@@ -97,13 +100,37 @@ class node:
         When a node wishes to leave the network, this functions is called,
         and the node updates it's neighbours' neighbour list
         """
+        # list of files the current node was hosting for the network
+        # we will filter out files the node might have donwloaded fully (leeched) from the network
+        network_files = []
+
         if self.neighbours == [self, self]:
             print("Node already outside network")
             return None
         else:
+            # transfer path information to right neighbour
+            for bucket in self.memory:
+                if bucket: # if the list is not empty
+                    for item in bucket:
+                        key = item[0]
+                        name = item[1]
+                        network_files.append(name.rpartition("/")[-1])
+                        position = key % 256
+                        self.neighbours[1].memory[position].append((key, f"{self.neighbours[1].name}/{name}.txt"))
+            # transfer files to right neighbour's directory
+            for file in os.listdir(self.name):
+                filename = os.fsdecode(file)
+                if filename in network_files:
+                    shutil.copy2(f"{self.name}/{filename}", self.neighbours[1].name)
+
+            # update neighbours
             self.neighbours[0].neighbours[1] = self.neighbours[1]
             self.neighbours[1].neighbours[0] = self.neighbours[0]
             self.neighbours = [self, self]
+            self.first = True
+    
+        # delete this node's directory
+        shutil.rmtree(f"{self.name}")
 
     def store_val(self, key, value, name):
         """
@@ -202,6 +229,7 @@ c = node("c")
 d = node("d")
 e = node("e")
 
+a.join_network(a)
 b.join_network(a)
 c.join_network(a)
 d.join_network(a)
@@ -225,7 +253,12 @@ b.store_val(test_file_key_2, test_file_2, "test_file_2")
 
 a.seed("/mnt/c/Users/isaqu/Documents/UFABC/DHT_simulation/videos/David_&_Goliath_animation.mp4", "David_&_Goliath_animation", 5)
 
-# for node in [a, b, c, d, e]:
-#     print(f"{node.name} memory : {node.memory}")
+for node in [a, b, c, d, e]:
+    print(f"{node.name} memory : {node.memory}")
 
 a.leech("David_&_Goliath_animation", 5)
+a.leave_network()
+
+
+for node in [a, b, c, d, e]:
+    print(f"{node.name} id: {node.id}, neighbours: {node.neighbours[0].name}, {node.neighbours[1].name}, first: {node.first}")
