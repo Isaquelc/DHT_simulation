@@ -27,10 +27,10 @@ class node:
         # this list will be updated as nodes join or leave the network
         self.neighbours = [self, self]
 
-        # each node has it's own memory, simulated by a list
+        # each node has it's own memory, simulated by a list of list (to deal with collisions)
         # for simulation purposes, we will store only the paths in the memory, 
         # and the actual data in local folders
-        self.memory = []
+        self.memory = [[] for bucket in range(256)]
 
         # in order to keep track of what are the current smallest and largest nodes, 
         # each node will have a "first" property, set to true only if it meets certain conditions
@@ -115,7 +115,8 @@ class node:
             with open(f"{self.name}/{name}.txt", "w") as text_file:
                 text_file.write(value)
             # add path to memory
-            self.memory.append((key, name))
+            position = key % 256
+            self.memory[position].append((key, f"{self.name}/{name}.txt"))
         # elif self.first and (key > self.neighbours[0].id or key < self.id):
         #     self.memory.append((key, value))
         elif key > self.id:
@@ -123,26 +124,6 @@ class node:
         
         else:
             self.neighbours[0].store_val(key, value, name)
-
-    def fetch_val(self, key):
-        """
-        searches the peers until it finds the one responsible for the key,
-        and then returns the value associated with the key to the current node
-        """
-        node = self
-        if self.first == False:
-            if key > node.id:
-                node = node.neighbours[1]
-            if key < node.neighbours[0].id:
-                node = node.neighbours[0]
-            else:
-                # TODO
-                # download data
-                pass
-        elif node.first:
-            # TODO
-            # download data
-            pass
 
     def seed(self, video_path, video_name, n_parts):
         """
@@ -162,7 +143,57 @@ class node:
             name = f"{video_name}_{i}"
             key = hash_func(name)
             self.store_val(key, part, name)
+        
+        return None
 
+    def fetch_val(self, key):
+        """
+        searches the peers until it finds the one responsible for the key,
+        and then returns the value associated with the key to the current node
+        """
+
+        position = key % 256
+        node = self
+        
+        while node.first == False:
+            if key > node.id:
+                node = node.neighbours[1]
+            if key < node.neighbours[0].id:
+                node = node.neighbours[0]
+            else:
+                for item in node.memory[position]:
+                    if item[0] == key:
+                        path = item[1]
+                        print(path)
+                        return path
+        if node.first:
+            for item in node.memory[position]:
+                    if item[0] == key:
+                        path = item[1]
+                        print(path)
+                        return path
+        else:
+            print("ERROR: could not find requested item")
+            return None
+
+    def leech(self, video_name, n_parts):
+        """
+        Takes as input a video name and the number of parts of the video, 
+        and retrieves all the parts, joins them, and downloads the video to 
+        the current nodes' directory
+        """
+        text = ""
+        for i in range(n_parts):
+            name = f"{video_name}_{i}"
+            print(name)
+            key = hash_func(name)
+            path = self.fetch_val(key)
+            with open(path) as text_file:
+                text += text_file.read()
+        with open(f"{self.name}/{video_name}.mp4", "wb+") as videoFile:
+            videoFile.write(base64.b64decode(text.encode("UTF-8")))
+        
+        return None
 
 # Create network
 a = node("a")
@@ -192,7 +223,9 @@ print(f"key = {test_file_key_2}, value:{test_file_2}")
 b.store_val(test_file_key, test_file, "test_file")
 b.store_val(test_file_key_2, test_file_2, "test_file_2")
 
-a.seed("/mnt/c/Users/isaqu/Documents/UFABC_temp/AED2_projeto/videos/David_&_Goliath_animation.mp4", "David_&_Goliath_animation", 5)
+a.seed("/mnt/c/Users/isaqu/Documents/UFABC/DHT_simulation/videos/David_&_Goliath_animation.mp4", "David_&_Goliath_animation", 5)
 
-for node in [a, b, c, d, e]:
-    print(f"{node.name} memory : {node.memory}")
+# for node in [a, b, c, d, e]:
+#     print(f"{node.name} memory : {node.memory}")
+
+a.leech("David_&_Goliath_animation", 5)
