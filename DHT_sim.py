@@ -93,6 +93,31 @@ class node:
         # the memory list will store the paths 
         Path(self.name).mkdir(parents=True, exist_ok=True)
 
+        # be responsible for correct data 
+        # check which data from it's right neightbour this node should take over
+        network_files = []
+        for bucket in self.neighbours[1].memory:
+            if bucket: # if the list is not empty
+                for item in bucket:
+                    key = item[0]
+                    name = item[1].rpartition("/")[-1]
+                    if (key <= self.id) or (self.first and key > self.neighbours[0].id):
+                        network_files.append(name)
+                        position = key % 256
+                        # add item to this node's memory
+                        self.memory[position].append((key, f"{self.name}/{name}.txt"))
+                        # remove item from neighbour's memory
+                        bucket.remove(item)
+
+        # transfer files from right neighbour's directory
+        for file in os.listdir(self.neighbours[1].name):
+            filename = os.fsdecode(file)
+            if filename in network_files:
+                # copy file to this node's directory
+                shutil.copy2(f"{self.neighbours[1].name}/{filename}", self.name)
+                # remove file from neighbour's directory
+                os.remove(f"{self.neighbours[1].name}/{filename}")
+
         return None
 
     def leave_network(self):
@@ -106,6 +131,8 @@ class node:
 
         if self.neighbours == [self, self]:
             print("Node already outside network")
+            # delete this node's directory should it exist
+            shutil.rmtree(f"{self.name}")
             return None
         else:
             # transfer path information to right neighbour
@@ -113,22 +140,26 @@ class node:
                 if bucket: # if the list is not empty
                     for item in bucket:
                         key = item[0]
-                        name = item[1]
-                        network_files.append(name.rpartition("/")[-1])
+                        name = item[1].rpartition("/")[-1]
+                        network_files.append(name)
                         position = key % 256
-                        self.neighbours[1].memory[position].append((key, f"{self.neighbours[1].name}/{name}.txt"))
+                        self.neighbours[1].memory[position].append((key, f"{self.neighbours[1].name}/{name}"))
             # transfer files to right neighbour's directory
             for file in os.listdir(self.name):
                 filename = os.fsdecode(file)
                 if filename in network_files:
                     shutil.copy2(f"{self.name}/{filename}", self.neighbours[1].name)
+            
+            # should this node be the first one, then it's right neighbour becomes the first
+            if self.first:
+                self.neighbours[1].first = True
 
             # update neighbours
             self.neighbours[0].neighbours[1] = self.neighbours[1]
             self.neighbours[1].neighbours[0] = self.neighbours[0]
             self.neighbours = [self, self]
             self.first = True
-    
+        
         # delete this node's directory
         shutil.rmtree(f"{self.name}")
 
@@ -191,13 +222,11 @@ class node:
                 for item in node.memory[position]:
                     if item[0] == key:
                         path = item[1]
-                        print(path)
                         return path
         if node.first:
             for item in node.memory[position]:
                     if item[0] == key:
                         path = item[1]
-                        print(path)
                         return path
         else:
             print("ERROR: could not find requested item")
@@ -212,7 +241,6 @@ class node:
         text = ""
         for i in range(n_parts):
             name = f"{video_name}_{i}"
-            print(name)
             key = hash_func(name)
             path = self.fetch_val(key)
             with open(path) as text_file:
@@ -222,43 +250,43 @@ class node:
         
         return None
 
-# Create network
-a = node("a")
-b = node("b")
-c = node("c")
-d = node("d")
-e = node("e")
+# # Create network
+# a = node("a")
+# b = node("b")
+# c = node("c")
+# d = node("d")
+# e = node("e")
 
-a.join_network(a)
-b.join_network(a)
-c.join_network(a)
-d.join_network(a)
-e.join_network(a)
+# a.join_network(a)
+# b.join_network(a)
+# c.join_network(a)
+# d.join_network(a)
+# e.join_network(a)
 
-for node in [a, b, c, d, e]:
-    print(f"{node.name} id: {node.id}, neighbours: {node.neighbours[0].name}, {node.neighbours[1].name}, first: {node.first}")
+# for node in [a, b, c, d, e]:
+#     print(f"{node.name} id: {node.id}, neighbours: {node.neighbours[0].name}, {node.neighbours[1].name}, first: {node.first}")
 
-# test file
-test_file = "this is a test file"
-test_file_key = hash_func(test_file)
-print(f"key = {test_file_key}, value:{test_file}")
+# # test file
+# test_file = "this is a test file"
+# test_file_key = hash_func(test_file)
+# print(f"key = {test_file_key}, value:{test_file}")
 
-# test file 2
-test_file_2 = "this is a different test file"
-test_file_key_2 = hash_func(test_file_2)
-print(f"key = {test_file_key_2}, value:{test_file_2}")
+# # test file 2
+# test_file_2 = "this is a different test file"
+# test_file_key_2 = hash_func(test_file_2)
+# print(f"key = {test_file_key_2}, value:{test_file_2}")
 
-b.store_val(test_file_key, test_file, "test_file")
-b.store_val(test_file_key_2, test_file_2, "test_file_2")
+# b.store_val(test_file_key, test_file, "test_file")
+# b.store_val(test_file_key_2, test_file_2, "test_file_2")
 
-a.seed("/mnt/c/Users/isaqu/Documents/UFABC/DHT_simulation/videos/David_&_Goliath_animation.mp4", "David_&_Goliath_animation", 5)
+# a.seed("/mnt/c/Users/isaqu/Documents/UFABC/DHT_simulation/videos/David_&_Goliath_animation.mp4", "David_&_Goliath_animation", 5)
 
-for node in [a, b, c, d, e]:
-    print(f"{node.name} memory : {node.memory}")
+# for node in [a, b, c, d, e]:
+#     print(f"{node.name} memory : {node.memory}")
 
-a.leech("David_&_Goliath_animation", 5)
-a.leave_network()
+# a.leech("David_&_Goliath_animation", 5)
+# a.leave_network()
 
 
-for node in [a, b, c, d, e]:
-    print(f"{node.name} id: {node.id}, neighbours: {node.neighbours[0].name}, {node.neighbours[1].name}, first: {node.first}")
+# for node in [a, b, c, d, e]:
+#     print(f"{node.name} id: {node.id}, neighbours: {node.neighbours[0].name}, {node.neighbours[1].name}, first: {node.first}")
